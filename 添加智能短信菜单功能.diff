@@ -1,0 +1,962 @@
+Index: src/com/android/mms/ui/ConversationListItem.java
+===================================================================
+--- src/com/android/mms/ui/ConversationListItem.java	(revision 4836)
++++ src/com/android/mms/ui/ConversationListItem.java	(revision 4837)
+@@ -63,6 +63,10 @@
+ import com.mediatek.opmsg.util.OpMessageUtils;
+ 
+ import java.util.List;
++import com.android.mms.MmsConfig;
++import com.android.mms.ConversionListInfoManager;
++import cn.cmcc.online.smsapi.TerminalApi;
++import cn.cmcc.online.smsapi.SmsPortData;
+ 
+ /**
+  * This class manages the view for given conversation.
+@@ -313,6 +317,23 @@
+         }
+     }
+ 
++    private ConversionListInfoManager mInfoManager;
++    private void updateCmccInfo(final Conversation conversation) {
++        if (conversation == null) {
++            return;
++        }
++        if(MmsConfig.isCmccFeature() && conversation.getRecipients() != null && conversation.getRecipients().size() == 1) {
++                if(mInfoManager == null) {
++                        mInfoManager = new ConversionListInfoManager(mContext);
++                }
++                String address = conversation.getRecipients().get(0).getNumber();
++                Log.d(TAG, "zly --> Address:" + address);
++                if(address != null) {
++                        mInfoManager.loadCmccInfo(address, mSubjectView, mFromView, mAvatarView);
++                }
++        }
++    }
++
+     private void updateFromView() {
+         mFromView.setText(formatMessage());
+         updateAvatarView();
+@@ -440,6 +461,10 @@
+         }
+         /// @}
+         mErrorIndicator.setVisibility(hasError ? VISIBLE : GONE);
++
++        if(MmsConfig.isCmccFeature()) {
++            updateCmccInfo(mConversation);
++        }
+     }
+ 
+     private void updateBackground(Conversation conversation) {
+Index: src/com/android/mms/ui/MessageUtils.java
+===================================================================
+--- src/com/android/mms/ui/MessageUtils.java	(revision 4836)
++++ src/com/android/mms/ui/MessageUtils.java	(revision 4837)
+@@ -233,7 +233,18 @@
+             }
+         }
+ 
++        /**
++        * save JISON to cache
++        */
++        public static void addJisonToMemoryCache(String key, String jison) {
++            if (mJisonCache != null) {
++                    synchronized (mJisonCache){
++                            mJisonCache.put(key, jison);
++                    }
++            }
++        }
+ 
++
+         /**
+         * get SmsPortData from cache
+         */
+Index: src/com/android/mms/ui/ComposeMessageActivity.java
+===================================================================
+--- src/com/android/mms/ui/ComposeMessageActivity.java	(revision 4836)
++++ src/com/android/mms/ui/ComposeMessageActivity.java	(revision 4837)
+@@ -226,6 +226,19 @@
+ import java.util.Set;
+ import java.util.regex.Pattern;
+ 
++import cn.cmcc.online.smsapi.SmsPortData;
++import cn.cmcc.online.smsapi.TerminalApi;
++import java.util.List;
++import android.widget.PopupWindow;
++import android.os.HandlerThread;
++import com.android.mms.DensityUtil;
++import android.view.Gravity;
++import android.graphics.Color;
++import android.graphics.drawable.ColorDrawable;
++import android.graphics.drawable.Drawable;
++import android.graphics.drawable.GradientDrawable;
++import android.graphics.drawable.StateListDrawable;
++
+ /**
+  * This is the main UI for:
+  * 1. Composing a new message;
+@@ -500,6 +513,17 @@
+     private boolean mCreateFromSendTo = false;
+     /// @}
+ 
++    private LinearLayout mLlMenu;
++    private LinearLayout mBottomPaneler;
++    private LinearLayout mButtonWithCounter;
++    private PopupWindow mPopupWindow;
++    private int mConversationId;
++    private String mServerPort;
++    private String mServerName;
++    private Handler mUIHandler;
++    private Handler mWorkHandler;
++    private HandlerThread mHandlerThread;
++
+     private void dismissProgressDialog() {
+         Log.d(TAG, "Composer reduce mAsyncTaskNum = " + (--mAsyncTaskNum));
+         if (mAsyncTaskNum == 0) {
+@@ -1087,7 +1111,7 @@
+         /// M: Code analyze 041, Add exception handling for starting activity.@{
+         if (null != intent && null != intent.getData()
+                 && intent.getData().getScheme().equals("mailto")) {
+-                MmsLog.e("fakerrequestCode:",requestCode+"");                  
++                MmsLog.e("fakerrequestCode:",requestCode+"");
+             try {
+                 MmsLog.e("fakerrequestCode2:",requestCode+"");
+                 //super.startActivityForResult(intent, requestCode);
+@@ -2230,8 +2254,9 @@
+                 }
+ 
+                 case MENU_OPEN_WITH_BROWSER:
++
+                     if (mURLs.size() == 1) {
+-                        Browser.open(ComposeMessageActivity.this, mURLs.get(0));
++                       // Browser.open(ComposeMessageActivity.this, mURLs.get(0));
+                     } else if (mURLs.size() > 1) {
+                         CharSequence items[] = mURLs.toArray(new CharSequence[mURLs.size()]);
+                         new AlertDialog.Builder(ComposeMessageActivity.this)
+@@ -2241,6 +2266,7 @@
+                                         ComposeMessageActivity.this, mURLs.get(which)))
+                                 .show();
+                     }
++
+                     return true;
+ 
+                 /// M: Code analyze 007, Get information from Sub or save message to Sub. @{
+@@ -2789,8 +2815,35 @@
+         }
+         actionBar.setDisplayShowCustomEnabled(true);
+         actionBar.setDisplayShowTitleEnabled(false);
++
++
+     }
+ 
++    private boolean isSmartMessage() {
++        ContactList recipients = (mConversation!=null) ? getRecipients(): null;
++
++        if (recipients != null && recipients.size() == 1) {
++            mServerPort = recipients.get(0).getNumber();
++            mServerName = recipients.get(0).getName();
++            mConversationId = (int)mConversation.getThreadId();
++            return true;
++        }
++
++        MmsLog.d(TAG, "zly --> participant.isSmartMessage()=false ");
++        if (mLlMenu != null) {
++            mLlMenu.setVisibility(View.GONE);
++        }
++        if (null != mBottomPaneler) {
++            mBottomPaneler.setVisibility(View.VISIBLE);
++        }
++
++        if (null != mButtonWithCounter) {
++            mButtonWithCounter.setVisibility(View.VISIBLE);
++        }
++
++        return false;
++     }
++
+ 	public static void setTextMarquee(TextView textView) {
+         if (textView != null) {
+             textView.setEllipsize(TextUtils.TruncateAt.MARQUEE);
+@@ -3143,8 +3196,154 @@
+ 
+         this.registerReceiver(mSubReceiver, intentFilter);
+         /// @}
++
+     }
+ 
++    private interface LoadMenuCallback {
++        void load(List<cn.cmcc.online.smsapi.Menu> menuList);
++    }
++
++    private void loadMenusAsync(String port, LoadMenuCallback callback) {
++
++        Message message = mWorkHandler.obtainMessage(1);
++        message.obj = new Object[]{port, callback};
++        mWorkHandler.sendMessage(message);
++    }
++
++
++    private static class LoadDataHandler extends Handler {
++        private Object[] param;
++        private Context context;
++
++        public LoadDataHandler(Looper looper, Context context) {
++            super(looper);
++            this.context = context;
++        }
++
++        @Override
++        public void handleMessage(Message msg) {
++            param = (Object[]) msg.obj;
++            String port = (String) param[0];
++
++            LoadMenuCallback loadMenuCallback = (LoadMenuCallback) param[1];
++            SmsPortData serverInfo = TerminalApi.getPortDataManager().getPortInfo(context, port);
++            loadMenuCallback.load(serverInfo.getMenuList());
++        }
++    }
++
++    private void showServerMenu(List<cn.cmcc.online.smsapi.Menu> menuList) {
++
++        if (menuList != null) {
++        	MmsLog.d(TAG, "zly --> menuList.size:" + menuList.size());
++        }
++        if (menuList == null || menuList.size() == 0 || mLlMenu == null) {
++            return;
++        }
++
++        mLlMenu.removeAllViews();
++
++        mLlMenu.setVisibility(View.VISIBLE);
++
++        final Context context = this;
++
++        final int dp1 = DensityUtil.dp2px(context, 1);
++        final int dp44 = DensityUtil.dp2px(context, 44);
++        final int dp8 = DensityUtil.dp2px(context, 8);
++
++        for (final cn.cmcc.online.smsapi.Menu menu : menuList) {
++            final String name = menu.getName();
++            final List<cn.cmcc.online.smsapi.Menu> subMenuList = menu.getSubMenuList();
++
++            TextView tv = new TextView(context);
++            GradientDrawable shapeRectWhite = new GradientDrawable();
++            shapeRectWhite.setShape(GradientDrawable.RECTANGLE);
++            shapeRectWhite.setColor(Color.parseColor("#ffffff"));
++            shapeRectWhite.setStroke(dp1 / 2, Color.parseColor("#D2D2D2"));
++
++            GradientDrawable shapeRectGray = new GradientDrawable();
++            shapeRectGray.setShape(GradientDrawable.RECTANGLE);
++            shapeRectGray.setColor(Color.parseColor("#D2D2D2"));
++            shapeRectGray.setStroke(dp1 / 2, Color.parseColor("#D2D2D2"));
++
++            StateListDrawable selectorRect = new StateListDrawable();
++            selectorRect.addState(new int[]{}, shapeRectWhite);
++            selectorRect.addState(new int[]{android.R.attr.state_pressed}, shapeRectGray);
++
++            tv.setBackgroundDrawable(selectorRect);
++            tv.setText(name);
++            tv.setTextColor(Color.parseColor("#7A7A7A"));
++            tv.setLayoutParams(new LinearLayout.LayoutParams(0, -1, 1));
++            tv.setGravity(Gravity.CENTER);
++            tv.setTextSize(14);
++
++            if (subMenuList != null && subMenuList.size() > 0) {
++                Drawable drawable = getResources().getDrawable(R.drawable.i_menu_48);
++                drawable.setBounds(0, 0, DensityUtil.dp2px(context, 16),
++                        DensityUtil.dp2px(context, 16));
++                tv.setCompoundDrawables(drawable, null, null, null);
++                int padding = DensityUtil.dp2px(context, 15);
++                tv.setCompoundDrawablePadding(-padding);
++                tv.setPadding(padding, 0, 0, 0);
++                tv.setIncludeFontPadding(false);
++            }
++
++            tv.setOnClickListener(new View.OnClickListener() {
++                @Override
++                public void onClick(View v) {
++                    if (subMenuList != null && subMenuList.size() > 0) {
++                        LinearLayout contentView = new LinearLayout(context);
++                        contentView.setLayoutParams(new LinearLayout.LayoutParams(-1, -1));
++                        contentView.setOrientation(LinearLayout.VERTICAL);
++                        GradientDrawable shapeRectWhite = new GradientDrawable();
++                        shapeRectWhite.setShape(GradientDrawable.RECTANGLE);
++                        shapeRectWhite.setColor(Color.parseColor("#ffffff"));
++                        shapeRectWhite.setStroke(dp1, Color.parseColor("#D2D2D2"));
++                        contentView.setBackgroundDrawable(shapeRectWhite);
++                        for (final cn.cmcc.online.smsapi.Menu subMenu : subMenuList) {
++                            TextView tvMenu = new TextView(context);
++                            tvMenu.setLayoutParams(new LinearLayout.LayoutParams(-1, dp44));
++                            tvMenu.setPadding(0, dp8, 0, dp8);
++                            tvMenu.setGravity(Gravity.CENTER);
++                            tvMenu.setTextSize(14);
++                            tvMenu.setTextColor(Color.parseColor("#7A7A7A"));
++                            tvMenu.setText(subMenu.getName());
++                            tvMenu.setOnClickListener(new View.OnClickListener() {
++                                @Override
++                                public void onClick(View v) {
++                                    TerminalApi.getActionProcessor().processPortServerAction(context, mServerPort, subMenu, null);
++                                    if (mPopupWindow != null) {
++                                        mPopupWindow.dismiss();
++                                    }
++                                }
++                            });
++                            contentView.addView(tvMenu);
++                        }
++                        if (mPopupWindow == null) {
++                            mPopupWindow = new PopupWindow(contentView, v.getWidth(), -2, true);
++                            mPopupWindow.setBackgroundDrawable(new ColorDrawable(0x00000000));
++                            mPopupWindow.setOutsideTouchable(true);
++                        } else {
++                            mPopupWindow.setContentView(contentView);
++                        }
++                        int[] location = new int[2];
++                        v.getLocationOnScreen(location);
++                        contentView.measure(View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
++                        int measureHeight = contentView.getMeasuredHeight();
++                        mPopupWindow.showAtLocation(v, Gravity.NO_GRAVITY, location[0], location[1] - measureHeight);
++                    } else {
++                        TerminalApi.getActionProcessor().processPortServerAction(context, mServerPort, menu, null);
++                        if (mPopupWindow != null) {
++                            mPopupWindow.dismiss();
++                        }
++                    }
++                }
++            });
++			MmsLog.d(TAG, "zly --> mLlMenu.addView before.");
++            mLlMenu.addView(tv);
++        }
++    }
++
++
+     private void showSubjectEditor(boolean show) {
+         if (Log.isLoggable(LogTag.APP, Log.VERBOSE)) {
+             log("showSubjectEditor: " + show);
+@@ -3982,6 +4181,38 @@
+             MmsLog.dpi(TAG, "onResume: update title, mConversation=" + mConversation.toString());
+         }
+ 
++
++        if (mLlMenu == null) {
++            mLlMenu = (LinearLayout)findViewById(R.id.serverMenu);
++            MmsLog.d(TAG, "zly --> initResourceRefs : mLlMenu=" + mLlMenu);
++            mBottomPaneler = (LinearLayout)findViewById(R.id.bottom_paneler);
++            mButtonWithCounter = (LinearLayout)findViewById(R.id.button_with_counter);
++
++            MmsLog.d(TAG, "zly --> onCreate mUIHandler.");
++            mUIHandler = new Handler(Looper.getMainLooper());
++            mHandlerThread = new HandlerThread("ComposeMessageActivity-Thread");
++            mHandlerThread.start();
++            mWorkHandler = new LoadDataHandler(mHandlerThread.getLooper(), this);
++        }
++
++        MmsLog.d(TAG, "zly --> isSmartMessage:" + isSmartMessage());
++        if (isSmartMessage()) {
++            loadMenusAsync(mServerPort, new LoadMenuCallback() {
++                @Override
++                public void load(final List<cn.cmcc.online.smsapi.Menu> menuList) {
++                    mUIHandler.post(new Runnable() {
++                        @Override
++                        public void run() {
++                            if (null != menuList) {
++                                MmsLog.d(TAG, "zly --> showServerMenu before. menuList:" + menuList.size());
++                            }
++                            showServerMenu(menuList);
++                        }
++                    });
++                }
++            });
++        }
++
+         // There seems to be a bug in the framework such that setting the title
+         // here gets overwritten to the original title.  Do this delayed as a
+         // workaround.
+Index: src/com/android/mms/DensityUtil.java
+===================================================================
+--- src/com/android/mms/DensityUtil.java	(nonexistent)
++++ src/com/android/mms/DensityUtil.java	(revision 4837)
+@@ -0,0 +1,22 @@
++package com.android.mms;
++
++import android.content.Context;
++
++/**
++ * Created by wangyuliang on 2015/10/30.
++ */
++public class DensityUtil {
++
++    public static float getScreenDensity(Context context) {
++        return context.getResources().getDisplayMetrics().density;
++    }
++
++    public static int dp2px(Context context, int dp) {
++        return (int) (dp * getScreenDensity(context) + 0.5);
++    }
++
++    public static int px2dp(Context context, int px) {
++        return (int) (px / getScreenDensity(context) + 0.5);
++    }
++}
++
+Index: src/com/android/mms/ConversionListInfoManager.java
+===================================================================
+--- src/com/android/mms/ConversionListInfoManager.java	(nonexistent)
++++ src/com/android/mms/ConversionListInfoManager.java	(revision 4837)
+@@ -0,0 +1,339 @@
++/**
++* Newly created file by wenpd on 2017/01/15 to get logo and name of specified address
++*/
++package com.android.mms;
++
++import java.io.IOException;
++import java.io.InputStream;
++import java.lang.ref.WeakReference;
++import java.net.HttpURLConnection;
++import java.net.MalformedURLException;
++import java.net.URL;
++
++import android.content.Context;
++import android.content.res.Resources;
++import android.graphics.Bitmap;
++import android.graphics.BitmapFactory;
++import android.graphics.drawable.BitmapDrawable;
++import android.graphics.drawable.Drawable;
++import android.os.AsyncTask;
++import android.os.Handler;
++import android.os.Message;
++import android.text.TextUtils;
++import android.util.Log;
++import android.view.View;
++import android.widget.ImageView;
++import android.widget.TextView;
++
++import cn.cmcc.online.smsapi.SmsPortData;
++import cn.cmcc.online.smsapi.TerminalApi;
++
++import com.android.mms.R;
++import com.android.mms.ui.ConversationList;
++import com.android.mms.ui.MessageUtils;
++import android.os.Looper;
++import android.os.HandlerThread;
++
++/**
++* public class called by ConversationListItem
++*/
++public class ConversionListInfoManager {
++    private final static String TAG = "ConversionListInfoManager";
++    private final static boolean DEBUG = true;
++    private final static int EVENT_PASER_JISON = 0x123;
++    private Context mCtx;
++    private TextView mFromView;
++    private TextView mPortNameView;
++    private ImageView mPortIconVew;
++    private Bitmap mLoadingBitmap;
++    private String mAddress;
++    private Handler mUIHandler;
++    private Handler mWorkHandler;
++    private HandlerThread mHandlerThread;
++
++    public ConversionListInfoManager(Context context) {
++        mCtx = context;
++        mLoadingBitmap = BitmapFactory.decodeResource(mCtx.getResources(), R.drawable.ic_sms_mms_details);
++        mUIHandler = new Handler(Looper.getMainLooper());
++        mHandlerThread = new HandlerThread("ConversionListInfoManager-Thread");
++        mHandlerThread.start();
++        mWorkHandler = new LoadPortInfoHandler(mHandlerThread.getLooper(), mCtx);
++    }
++
++    /**
++    * main interface to get CMCC info
++    */
++        public void loadCmccInfo(final String address, TextView fromView, TextView portNameTV, ImageView portIconIV) {
++                mFromView = fromView;
++                mPortNameView = portNameTV;
++                mPortIconVew = portIconIV;
++                mAddress = address;
++                SmsPortData portData = MessageUtils.getSmsPortDataFromMemCache(mAddress);
++                Log.d(TAG, "loadCmccInfo=" + mAddress + " portData:" + (null == portData));
++                if(portData == null) {
++                    bindDefault();
++
++                    loadPortInfoAsync(mAddress, new LoadPortInfoCallback() {
++                        @Override
++                        public void load(String port, final SmsPortData portData) {
++                            //   String tag = (String) holder.mAddress.getTag();
++
++                            if (portData == null || !portData.isHasData()) {
++                                Log.d(TAG, "loadCmccInfo------> portData.isHasData()=" + portData.isHasData());
++                                return;
++                            }
++                            mUIHandler.post(new Runnable() {
++                                @Override
++                                public void run() {
++                                    parseData(portData, mAddress, true);
++                                }
++                            });
++                        }
++                    });
++
++                 } else {
++                    parseData(portData,mAddress,false);
++                 }
++         }
++
++        public void addBitmapToMemoryCache(String key, Bitmap bitmap) {
++                if(mCtx instanceof ConversationList){
++                        ((ConversationList)mCtx).addBitmapToMemoryCache(key, bitmap);
++                }
++        }
++
++        public Bitmap getBitmapFromMemCache(String key) {
++                if(mCtx instanceof ConversationList){
++                        return ((ConversationList)mCtx).getBitmapFromMemCache(key);
++                }
++                return null;
++        }
++
++        private void loadImage(final String imgUrl) {
++                loadBitmap(imgUrl, mPortIconVew);
++        }
++
++        //download the image according to url if wlan is availble
++        private void loadBitmap(final String imgUrl, ImageView imageView) {
++                final Bitmap bitmap = getBitmapFromMemCache(imgUrl);
++                if(bitmap != null) {
++                        imageView.setImageBitmap(bitmap);
++                        imageView.setVisibility(View.VISIBLE);
++                        return;
++                }
++                if(!MessageUtils.isWifiNetwork(mCtx)) {
++                        imageView.setVisibility(View.GONE);
++                        return ;
++                }
++                if (cancelPotentialWork(imgUrl, imageView)) {
++                final BitmapWorkerTask task = new BitmapWorkerTask(imageView);
++                 final AsyncDrawable asyncDrawable =
++                new AsyncDrawable(mCtx.getResources(), mLoadingBitmap, task);
++                 imageView.setImageDrawable(asyncDrawable);
++                task.execute(imgUrl);
++                }
++        }
++
++   private static BitmapWorkerTask getBitmapWorkerTask(ImageView imageView) {
++        if (imageView != null) {
++                final Drawable drawable = imageView.getDrawable();
++                if (drawable instanceof AsyncDrawable) {
++                 final AsyncDrawable asyncDrawable = (AsyncDrawable) drawable;
++                 return asyncDrawable.getBitmapWorkerTask();
++               }
++        }
++         return null;
++        }
++
++   public static boolean cancelPotentialWork(final String data, ImageView imageView) {
++        final BitmapWorkerTask bitmapWorkerTask = getBitmapWorkerTask(imageView);
++
++         if (bitmapWorkerTask != null) {
++        final String bitmapData = bitmapWorkerTask.data;
++         if (bitmapData == null || bitmapData != data) {
++                 // Cancel previous task
++                bitmapWorkerTask.cancel(true);
++                 } else {
++                 // The same work is already in progress
++                 return false;
++                 }
++         }
++          // No task associated with the ImageView, or an existing task was cancelled
++            return true;
++        }
++
++    //parse the json string to get logo's url and then to download the image if wlan is availble
++    private void parseData(final SmsPortData portData, String fromAddress, boolean needCache) {
++         if(DEBUG && needCache) {
++            Log.w(TAG, "parseData-portData=" + mAddress + portData);
++         }
++
++         if(!mAddress.equals(fromAddress)) {
++              if(DEBUG) Log.w(TAG, "unmatched address;" + mAddress + "|" + fromAddress);
++               return;
++         }
++        Log.w(TAG, "portData.isHasData()=" + portData.isHasData());
++        if(portData.isHasData()) {
++            if(needCache) {
++                 MessageUtils.addSmsPortDataToMemoryCache(mAddress, portData);
++            }
++
++            String name = portData.getName();
++            String logoUrlStr = portData.getLogoUrl();
++            if(!TextUtils.isEmpty(name)) {
++                mPortNameView.setText(name);
++                //mPortNameView.setVisibility(View.VISIBLE);
++                //mFromView.setVisibility(View.GONE);
++            }
++            if(!TextUtils.isEmpty(logoUrlStr)) {
++                loadImage(logoUrlStr);
++            }
++        } else {
++            bindDefault();
++        }
++
++    }
++
++    private void bindDefault() {
++       //  mFromView.setVisibility(View.VISIBLE);
++         //mPortNameView.setVisibility(View.GONE);
++         //mPortIconVew.setVisibility(View.GONE);
++    }
++
++   /**
++   * simple task to get jison datum
++   */
++   /*class FetcherPortDataTask extends AsyncTask<String, Void, String> {
++        @Override
++        protected String doInBackground(String... params) {
++        String address = params[0];
++        if(address != null) {
++        return getPortData(address);
++        }
++        return null;
++        }
++
++        @Override
++        protected void onPostExecute(String param) {
++        parseJson(param);
++        }
++   }*/
++
++   static class AsyncDrawable extends BitmapDrawable {
++                 private final WeakReference<BitmapWorkerTask> bitmapWorkerTaskReference;
++
++         public AsyncDrawable(Resources res, Bitmap bitmap,
++                 BitmapWorkerTask bitmapWorkerTask) {
++                super(res, bitmap);
++                bitmapWorkerTaskReference =
++                 new WeakReference<BitmapWorkerTask>(bitmapWorkerTask);
++                 }
++
++         public BitmapWorkerTask getBitmapWorkerTask() {
++                 return bitmapWorkerTaskReference.get();
++                 }
++        }
++
++    class BitmapWorkerTask extends AsyncTask<String, Void, Bitmap> {
++        private final WeakReference<ImageView> imageViewReference;
++         private String data = null;
++
++         public BitmapWorkerTask(ImageView imageView) {
++         // Use a WeakReference to ensure the ImageView can be garbage collected
++         imageViewReference = new WeakReference<ImageView>(imageView);
++         }
++
++        // Decode image in background.
++         @Override
++         protected Bitmap doInBackground(String... params) {
++            data = params[0];
++            URL imageUrl = null;
++            Bitmap bitmap = null;
++            HttpURLConnection connection = null;
++            InputStream is = null;
++            try {
++                 imageUrl = new URL(data);
++            } catch (MalformedURLException e) {
++                 e.printStackTrace();
++            }
++            try {
++                 connection = (HttpURLConnection) imageUrl
++          .openConnection();
++            connection.setDoInput(true);
++            connection.connect();
++            is = connection.getInputStream();
++            bitmap = BitmapFactory.decodeStream(is);//decodeBitmapFromStreamn(is, 108, 108);
++            } catch (IOException e) {
++             e.printStackTrace();
++             return null;
++             } finally {
++                if(connection != null) {
++                connection.disconnect();
++                }
++                if(is != null) {
++                    try {
++                                    is.close();
++                    } catch (IOException e) {
++                                    // TODO Auto-generated catch block
++                                    e.printStackTrace();
++                                    return null;
++                    }
++                }
++             }
++                            if(bitmap != null) {
++                            addBitmapToMemoryCache(data, bitmap);
++                            }
++            return bitmap;
++             }
++
++             @Override
++            protected void onPostExecute(Bitmap bitmap) {
++            if (isCancelled()) {
++             bitmap = null;
++             }
++
++             if (DEBUG) {
++            Log.w(TAG, "bitmap=" + bitmap);
++             }
++
++             if (imageViewReference != null && bitmap != null) {
++               final ImageView imageView = imageViewReference.get();
++              final BitmapWorkerTask bitmapWorkerTask =
++                      getBitmapWorkerTask(imageView);
++             if (this == bitmapWorkerTask && imageView != null) {
++                   imageView.setImageBitmap(bitmap);
++                    imageView.setVisibility(View.VISIBLE);
++                 }
++                 }
++             }
++   }
++
++    private interface LoadPortInfoCallback {
++        void load(String port, SmsPortData portData);
++    }
++    private void loadPortInfoAsync(String port, LoadPortInfoCallback callback) {
++        Message message = new Message();
++        message.obj = new Object[]{port, callback};
++        mWorkHandler.sendMessage(message);
++    }
++
++    private static class LoadPortInfoHandler extends Handler {
++        private Context context;
++
++        public LoadPortInfoHandler(Looper looper, Context context) {
++            super(looper);
++            this.context = context;
++        }
++
++        @Override
++        public void handleMessage(Message msg) {
++            Object[] param = (Object[]) msg.obj;
++            String port = (String) param[0];
++
++            LoadPortInfoCallback callback = (LoadPortInfoCallback) param[1];
++            SmsPortData portData = TerminalApi.getPortDataManager().getPortInfo(context, port);
++
++            callback.load(port, portData);
++        }
++    }
++}
+Index: res/layout/compose_message_activity.xml
+===================================================================
+--- res/layout/compose_message_activity.xml	(revision 4836)
++++ res/layout/compose_message_activity.xml	(revision 4837)
+@@ -206,10 +206,12 @@
+                     android:visibility="gone"
+                     />
+             <LinearLayout
++                android:id="@+id/bottom_paneler"
+                 android:orientation="horizontal"
+                 android:layout_width="match_parent"
+                 android:layout_height="wrap_content"
+                 android:background="#fff"
++                android:visibility="gone"
+                 android:paddingBottom="4dip" >
+ 
+                 <ImageButton
+@@ -283,7 +285,8 @@
+                     android:paddingBottom="4dip"
+                     android:paddingTop="4dip"
+                     android:layout_width="wrap_content"
+-                    android:layout_height="wrap_content" >
++                    android:layout_height="wrap_content"
++                    android:visibility="gone">
+ 
+                     <ImageButton
+                         android:id="@+id/ct_send_button_small"
+Index: res/layout-finger-728X480/compose_message_activity.xml
+===================================================================
+--- res/layout-finger-728X480/compose_message_activity.xml	(revision 4836)
++++ res/layout-finger-728X480/compose_message_activity.xml	(revision 4837)
+@@ -284,7 +284,8 @@
+                     android:paddingBottom="4dip"
+                     android:paddingTop="4dip"
+                     android:layout_width="wrap_content"
+-                    android:layout_height="wrap_content" >
++                    android:layout_height="wrap_content"
++                    android:visibility="gone">
+ 
+                     <ImageButton
+                         android:id="@+id/ct_send_button_small"
+@@ -427,6 +428,19 @@
+                     android:layout_marginLeft="5dip"
+                     android:background="@drawable/sim_sms_multidel_button_selector"></ImageButton>
+             </LinearLayout>
++    		   <!-- Add for smart messaging start. -->
++	    <LinearLayout
++			android:background="@drawable/textview_border"
++			android:id="@+id/serverMenu"
++			android:orientation="horizontal"
++			android:divider="@drawable/divider_vertical"
++			android:showDividers="middle"
++			android:layout_alignParentBottom="true"
++			android:layout_width="match_parent"
++			android:layout_height="48dp"
++			android:visibility="gone">
++	    </LinearLayout>
++		<!-- Add for smart messaging end. -->
+         </LinearLayout>
+     </LinearLayout>
+ </com.android.mms.ui.HeightChangedLinearLayout>
+Index: res/layout-finger-1080X720/compose_message_activity.xml
+===================================================================
+--- res/layout-finger-1080X720/compose_message_activity.xml	(revision 4836)
++++ res/layout-finger-1080X720/compose_message_activity.xml	(revision 4837)
+@@ -185,6 +185,7 @@
+                 android:layout_height="wrap_content"
+                 android:background="#fff"
+                 android:gravity="bottom"
++				android:visibility="gone"
+                 android:paddingBottom="4dip" >
+                 <LinearLayout
+                     android:orientation="vertical"
+@@ -209,6 +210,7 @@
+                     android:visibility="gone"
+                     />
+             <LinearLayout
++				android:id="@+id/bottom_paneler"
+                 android:orientation="horizontal"
+                 android:layout_width="match_parent"
+                 android:layout_height="wrap_content"
+@@ -428,6 +430,19 @@
+                     android:background="@drawable/sim_sms_multidel_button_selector"></ImageButton>
+             </LinearLayout>
+         </LinearLayout>
++			    		   <!-- Add for smart messaging start. -->
++		<LinearLayout
++			android:background="@drawable/textview_border"
++			android:id="@+id/serverMenu"
++			android:orientation="horizontal"
++			android:divider="@drawable/divider_vertical"
++			android:showDividers="middle"
++			android:layout_alignParentBottom="true"
++			android:layout_width="match_parent"
++			android:layout_height="48dp"
++			android:visibility="gone">
++			</LinearLayout>
++		<!-- Add for smart messaging end. -->
+     </LinearLayout>
+ </com.android.mms.ui.HeightChangedLinearLayout>
+ </RelativeLayout>
+Index: res/layout-finger-854X480/compose_message_activity.xml
+===================================================================
+--- res/layout-finger-854X480/compose_message_activity.xml	(revision 4836)
++++ res/layout-finger-854X480/compose_message_activity.xml	(revision 4837)
+@@ -284,7 +284,8 @@
+                     android:paddingBottom="4dip"
+                     android:paddingTop="4dip"
+                     android:layout_width="wrap_content"
+-                    android:layout_height="wrap_content" >
++                    android:layout_height="wrap_content"
++					android:visibility="gone">
+ 
+                     <ImageButton
+                         android:id="@+id/ct_send_button_small"
+@@ -428,6 +429,19 @@
+                     android:background="@drawable/sim_sms_multidel_button_selector"></ImageButton>
+             </LinearLayout>
+         </LinearLayout>
++			    		   <!-- Add for smart messaging start. -->
++		<LinearLayout
++			android:background="@drawable/textview_border"
++			android:id="@+id/serverMenu"
++			android:orientation="horizontal"
++			android:divider="@drawable/divider_vertical"
++			android:showDividers="middle"
++			android:layout_alignParentBottom="true"
++			android:layout_width="match_parent"
++			android:layout_height="48dp"
++			android:visibility="gone">
++			</LinearLayout>
++		<!-- Add for smart messaging end. -->
+     </LinearLayout>
+ </com.android.mms.ui.HeightChangedLinearLayout>
+ </RelativeLayout>
+Index: res/layout-finger-960X540/compose_message_activity.xml
+===================================================================
+--- res/layout-finger-960X540/compose_message_activity.xml	(revision 4836)
++++ res/layout-finger-960X540/compose_message_activity.xml	(revision 4837)
+@@ -284,7 +284,8 @@
+                     android:paddingBottom="4dip"
+                     android:paddingTop="4dip"
+                     android:layout_width="wrap_content"
+-                    android:layout_height="wrap_content" >
++                    android:layout_height="wrap_content" 
++					android:visibility="gone">
+ 
+                     <ImageButton
+                         android:id="@+id/ct_send_button_small"
+@@ -428,6 +429,19 @@
+                     android:background="@drawable/sim_sms_multidel_button_selector"></ImageButton>
+             </LinearLayout>
+         </LinearLayout>
++			    		   <!-- Add for smart messaging start. -->
++		<LinearLayout
++			android:background="@drawable/textview_border"
++			android:id="@+id/serverMenu"
++			android:orientation="horizontal"
++			android:divider="@drawable/divider_vertical"
++			android:showDividers="middle"
++			android:layout_alignParentBottom="true"
++			android:layout_width="match_parent"
++			android:layout_height="48dp"
++			android:visibility="gone">
++			</LinearLayout>
++		<!-- Add for smart messaging end. -->
+     </LinearLayout>
+ </com.android.mms.ui.HeightChangedLinearLayout>
+ </RelativeLayout>
+Index: res/layout-finger-782X480/compose_message_activity.xml
+===================================================================
+--- res/layout-finger-782X480/compose_message_activity.xml	(revision 4836)
++++ res/layout-finger-782X480/compose_message_activity.xml	(revision 4837)
+@@ -284,7 +284,8 @@
+                     android:paddingBottom="4dip"
+                     android:paddingTop="4dip"
+                     android:layout_width="wrap_content"
+-                    android:layout_height="wrap_content" >
++                    android:layout_height="wrap_content"
++                    android:visibility="gone">
+ 
+                     <ImageButton
+                         android:id="@+id/ct_send_button_small"
+@@ -428,6 +429,19 @@
+                     android:background="@drawable/sim_sms_multidel_button_selector"></ImageButton>
+             </LinearLayout>
+         </LinearLayout>
++			    		   <!-- Add for smart messaging start. -->
++		<LinearLayout
++			android:background="@drawable/textview_border"
++			android:id="@+id/serverMenu"
++			android:orientation="horizontal"
++			android:divider="@drawable/divider_vertical"
++			android:showDividers="middle"
++			android:layout_alignParentBottom="true"
++			android:layout_width="match_parent"
++			android:layout_height="48dp"
++			android:visibility="gone">
++			</LinearLayout>
++		<!-- Add for smart messaging end. -->
+     </LinearLayout>
+ </com.android.mms.ui.HeightChangedLinearLayout>
+ </RelativeLayout>
+Index: res/drawable-hdpi/i_menu_48.png
+===================================================================
+Cannot display: file marked as a binary type.
+svn:mime-type = application/octet-stream
+Index: res/drawable-hdpi/i_menu_48.png
+===================================================================
+--- res/drawable-hdpi/i_menu_48.png	(nonexistent)
++++ res/drawable-hdpi/i_menu_48.png	(revision 4837)
+
+Property changes on: res/drawable-hdpi/i_menu_48.png
+___________________________________________________________________
+Added: svn:mime-type
+## -0,0 +1 ##
++application/octet-stream
+\ No newline at end of property
