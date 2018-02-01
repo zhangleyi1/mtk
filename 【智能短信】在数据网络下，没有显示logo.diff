@@ -1,0 +1,13 @@
+Index: src/com/android/mms/ui/MessageUtils.java
+===================================================================
+--- src/com/android/mms/ui/MessageUtils.java	(revision 4984)
++++ src/com/android/mms/ui/MessageUtils.java	(revision 4985)
+@@ -325,7 +325,7 @@
+             return false;
+         }
+ 
+-        if (ConnectivityManager.TYPE_WIFI == info.getType()) {
++        if (ConnectivityManager.TYPE_WIFI == info.getType() || ConnectivityManager.TYPE_MOBILE == info.getType()) {
+             return true;
+         }
+         return false;
