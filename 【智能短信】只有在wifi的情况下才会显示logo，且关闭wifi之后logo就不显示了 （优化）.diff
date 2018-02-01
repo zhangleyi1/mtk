@@ -1,0 +1,578 @@
+Index: src/com/android/mms/ConversionListInfoManager.java
+===================================================================
+--- src/com/android/mms/ConversionListInfoManager.java	(revision 4926)
++++ src/com/android/mms/ConversionListInfoManager.java	(revision 4927)
+@@ -69,17 +69,15 @@
+                 mPortIconVew = portIconIV;
+                 mAddress = address;
+                 SmsPortData portData = MessageUtils.getSmsPortDataFromMemCache(mAddress);
+-                Log.d(TAG, "loadCmccInfo=" + mAddress + " portData:" + (null == portData));
++                Log.d(TAG, "zly --> loadCmccInfo=" + mAddress + " portData:" + (null != portData));
+                 if(portData == null) {
+-                    bindDefault();
+ 
+                     loadPortInfoAsync(mAddress, new LoadPortInfoCallback() {
+                         @Override
+                         public void load(String port, final SmsPortData portData) {
+-                            //   String tag = (String) holder.mAddress.getTag();
+ 
+                             if (portData == null || !portData.isHasData()) {
+-                                Log.d(TAG, "loadCmccInfo------> portData.isHasData()=" + portData.isHasData());
++                                Log.d(TAG, "zly --> loadCmccInfo portData.isHasData()=" + portData.isHasData());
+                                 return;
+                             }
+                             mUIHandler.post(new Runnable() {
+@@ -90,23 +88,24 @@
+                             });
+                         }
+                     });
+-
+-                 } else {
++                } else {
+                     parseData(portData,mAddress,false);
+-                 }
++                }
+          }
+ 
+         public void addBitmapToMemoryCache(String key, Bitmap bitmap) {
+-                if(mCtx instanceof ConversationList){
+-                        ((ConversationList)mCtx).addBitmapToMemoryCache(key, bitmap);
+-                }
++            if(mCtx instanceof ConversationList) {
++                //((ConversationList)mCtx).addBitmapToMemoryCache(key, bitmap);
++                MessageUtils.addBitmapToMemoryCache(key, bitmap);
++            }
+         }
+ 
+         public Bitmap getBitmapFromMemCache(String key) {
+-                if(mCtx instanceof ConversationList){
+-                        return ((ConversationList)mCtx).getBitmapFromMemCache(key);
+-                }
+-                return null;
++            if(mCtx instanceof ConversationList) {
++                //return ((ConversationList)mCtx).getBitmapFromMemCache(key);
++                return MessageUtils.getBitmapFromMemCache(key);
++            }
++            return null;
+         }
+ 
+         private void loadImage(final String imgUrl) {
+@@ -117,62 +116,63 @@
+         private void loadBitmap(final String imgUrl, ImageView imageView) {
+                 final Bitmap bitmap = getBitmapFromMemCache(imgUrl);
+                 if(bitmap != null) {
+-                        imageView.setImageBitmap(bitmap);
+-                        imageView.setVisibility(View.VISIBLE);
+-                        return;
++                    imageView.setImageBitmap(bitmap);
++                    imageView.setVisibility(View.VISIBLE);
++                    return;
+                 }
+                 if(!MessageUtils.isWifiNetwork(mCtx)) {
+-                        //imageView.setVisibility(View.GONE);
+-                        return ;
++                    //imageView.setVisibility(View.GONE);
++                    return ;
+                 }
+                 if (cancelPotentialWork(imgUrl, imageView)) {
+-                final BitmapWorkerTask task = new BitmapWorkerTask(imageView);
+-                 final AsyncDrawable asyncDrawable =
+-                new AsyncDrawable(mCtx.getResources(), mLoadingBitmap, task);
+-                 imageView.setImageDrawable(asyncDrawable);
+-                task.execute(imgUrl);
++                    final BitmapWorkerTask task = new BitmapWorkerTask(imageView);
++                    final AsyncDrawable asyncDrawable =
++                            new AsyncDrawable(mCtx.getResources(), mLoadingBitmap, task);
++                    imageView.setImageDrawable(asyncDrawable);
++                    task.execute(imgUrl);
+                 }
+         }
+ 
+-   private static BitmapWorkerTask getBitmapWorkerTask(ImageView imageView) {
++    private static BitmapWorkerTask getBitmapWorkerTask(ImageView imageView) {
+         if (imageView != null) {
+-                final Drawable drawable = imageView.getDrawable();
+-                if (drawable instanceof AsyncDrawable) {
+-                 final AsyncDrawable asyncDrawable = (AsyncDrawable) drawable;
+-                 return asyncDrawable.getBitmapWorkerTask();
+-               }
++            final Drawable drawable = imageView.getDrawable();
++            if (drawable instanceof AsyncDrawable) {
++                final AsyncDrawable asyncDrawable = (AsyncDrawable) drawable;
++                return asyncDrawable.getBitmapWorkerTask();
++            }
+         }
+          return null;
+-        }
++    }
+ 
+-   public static boolean cancelPotentialWork(final String data, ImageView imageView) {
++    public static boolean cancelPotentialWork(final String data, ImageView imageView) {
+         final BitmapWorkerTask bitmapWorkerTask = getBitmapWorkerTask(imageView);
+ 
+-         if (bitmapWorkerTask != null) {
+-        final String bitmapData = bitmapWorkerTask.data;
+-         if (bitmapData == null || bitmapData != data) {
+-                 // Cancel previous task
++        if (bitmapWorkerTask != null) {
++            final String bitmapData = bitmapWorkerTask.data;
++            if (bitmapData == null || bitmapData != data) {
++                // Cancel previous task
+                 bitmapWorkerTask.cancel(true);
+-                 } else {
+-                 // The same work is already in progress
+-                 return false;
+-                 }
+-         }
+-          // No task associated with the ImageView, or an existing task was cancelled
+-            return true;
++            } else {
++                // The same work is already in progress
++                return false;
++            }
+         }
++        // No task associated with the ImageView, or an existing task was cancelled
++        return true;
++    }
+ 
+     //parse the json string to get logo's url and then to download the image if wlan is availble
+     private void parseData(final SmsPortData portData, String fromAddress, boolean needCache) {
+          if(DEBUG && needCache) {
+-            Log.w(TAG, "parseData-portData=" + mAddress + portData);
++            Log.w(TAG, "zly --> parseData-portData=" + mAddress + portData);
+          }
+ 
+          if(!mAddress.equals(fromAddress)) {
+-              if(DEBUG) Log.w(TAG, "unmatched address;" + mAddress + "|" + fromAddress);
++              if(DEBUG) Log.w(TAG, "zly --> unmatched address;" + mAddress + "|" + fromAddress);
+                return;
+          }
+-        Log.w(TAG, "portData.isHasData()=" + portData.isHasData());
++
++        Log.w(TAG, "zly --> portData.isHasData()=" + portData.isHasData());
+         if(portData.isHasData()) {
+             if(needCache) {
+                  MessageUtils.addSmsPortDataToMemoryCache(mAddress, portData);
+@@ -185,67 +185,40 @@
+                 //mPortNameView.setVisibility(View.VISIBLE);
+                 //mFromView.setVisibility(View.GONE);
+             }
++
+             if(!TextUtils.isEmpty(logoUrlStr)) {
+                 loadImage(logoUrlStr);
+             }
+-        } else {
+-            bindDefault();
+         }
+-
+     }
+ 
+-    private void bindDefault() {
+-       //  mFromView.setVisibility(View.VISIBLE);
+-         //mPortNameView.setVisibility(View.GONE);
+-         //mPortIconVew.setVisibility(View.GONE);
+-    }
++   static class AsyncDrawable extends BitmapDrawable {
++        private final WeakReference<BitmapWorkerTask> bitmapWorkerTaskReference;
++        public AsyncDrawable(Resources res, Bitmap bitmap,
+ 
+-   /**
+-   * simple task to get jison datum
+-   */
+-   /*class FetcherPortDataTask extends AsyncTask<String, Void, String> {
+-        @Override
+-        protected String doInBackground(String... params) {
+-        String address = params[0];
+-        if(address != null) {
+-        return getPortData(address);
++        BitmapWorkerTask bitmapWorkerTask) {
++            super(res, bitmap);
++            bitmapWorkerTaskReference = new WeakReference<BitmapWorkerTask>(bitmapWorkerTask);
+         }
+-        return null;
+-        }
+ 
+-        @Override
+-        protected void onPostExecute(String param) {
+-        parseJson(param);
++        public BitmapWorkerTask getBitmapWorkerTask() {
++            return bitmapWorkerTaskReference.get();
+         }
+-   }*/
++    }
+ 
+-   static class AsyncDrawable extends BitmapDrawable {
+-                 private final WeakReference<BitmapWorkerTask> bitmapWorkerTaskReference;
+-
+-         public AsyncDrawable(Resources res, Bitmap bitmap,
+-                 BitmapWorkerTask bitmapWorkerTask) {
+-                super(res, bitmap);
+-                bitmapWorkerTaskReference =
+-                 new WeakReference<BitmapWorkerTask>(bitmapWorkerTask);
+-                 }
+-
+-         public BitmapWorkerTask getBitmapWorkerTask() {
+-                 return bitmapWorkerTaskReference.get();
+-                 }
+-        }
+-
+     class BitmapWorkerTask extends AsyncTask<String, Void, Bitmap> {
+         private final WeakReference<ImageView> imageViewReference;
+-         private String data = null;
++        private String data = null;
+ 
+-         public BitmapWorkerTask(ImageView imageView) {
+-         // Use a WeakReference to ensure the ImageView can be garbage collected
+-         imageViewReference = new WeakReference<ImageView>(imageView);
+-         }
++        public BitmapWorkerTask(ImageView imageView) {
++        // Use a WeakReference to ensure the ImageView can be garbage collected
++        imageViewReference = new WeakReference<ImageView>(imageView);
++        }
+ 
+         // Decode image in background.
+-         @Override
+-         protected Bitmap doInBackground(String... params) {
++        @Override
++        protected Bitmap doInBackground(String... params) {
++
+             data = params[0];
+             URL imageUrl = null;
+             Bitmap bitmap = null;
+@@ -252,61 +225,65 @@
+             HttpURLConnection connection = null;
+             InputStream is = null;
+             try {
+-                 imageUrl = new URL(data);
++                imageUrl = new URL(data);
+             } catch (MalformedURLException e) {
+-                 e.printStackTrace();
++                e.printStackTrace();
+             }
++
+             try {
+-                 connection = (HttpURLConnection) imageUrl
+-          .openConnection();
+-            connection.setDoInput(true);
+-            connection.connect();
+-            is = connection.getInputStream();
+-            bitmap = BitmapFactory.decodeStream(is);//decodeBitmapFromStreamn(is, 108, 108);
++                connection = (HttpURLConnection) imageUrl.openConnection();
++                connection.setDoInput(true);
++                connection.connect();
++                is = connection.getInputStream();
++                bitmap = BitmapFactory.decodeStream(is);//decodeBitmapFromStreamn(is, 108, 108);
+             } catch (IOException e) {
+-             e.printStackTrace();
+-             return null;
+-             } finally {
++                e.printStackTrace();
++                return null;
++            } finally {
++
+                 if(connection != null) {
+-                connection.disconnect();
++                    connection.disconnect();
+                 }
++
+                 if(is != null) {
+                     try {
+-                                    is.close();
++                        is.close();
+                     } catch (IOException e) {
+-                                    // TODO Auto-generated catch block
+-                                    e.printStackTrace();
+-                                    return null;
++                        // TODO Auto-generated catch block
++                        e.printStackTrace();
++                        return null;
+                     }
+                 }
+-             }
+-                            if(bitmap != null) {
+-                            addBitmapToMemoryCache(data, bitmap);
+-                            }
++            }
++
++            if(bitmap != null) {
++                addBitmapToMemoryCache(data, bitmap);
++            }
+             return bitmap;
+-             }
++        }
+ 
+-             @Override
+-            protected void onPostExecute(Bitmap bitmap) {
++        @Override
++        protected void onPostExecute(Bitmap bitmap) {
++
+             if (isCancelled()) {
+-             bitmap = null;
+-             }
++                bitmap = null;
++            }
+ 
+-             if (DEBUG) {
+-            Log.w(TAG, "bitmap=" + bitmap);
+-             }
++            if (DEBUG) {
++                Log.w(TAG, "zly --> bitmap=" + bitmap);
++            }
+ 
+-             if (imageViewReference != null && bitmap != null) {
+-               final ImageView imageView = imageViewReference.get();
+-              final BitmapWorkerTask bitmapWorkerTask =
+-                      getBitmapWorkerTask(imageView);
+-             if (this == bitmapWorkerTask && imageView != null) {
+-                   imageView.setImageBitmap(bitmap);
++            if (imageViewReference != null && bitmap != null) {
++                final ImageView imageView = imageViewReference.get();
++                final BitmapWorkerTask bitmapWorkerTask =
++                getBitmapWorkerTask(imageView);
++                if (this == bitmapWorkerTask && imageView != null) {
++                    imageView.setImageBitmap(bitmap);
+                     imageView.setVisibility(View.VISIBLE);
+-                 }
+-                 }
+-             }
+-   }
++                }
++            }
++        }
++    }
+ 
+     private interface LoadPortInfoCallback {
+         void load(String port, SmsPortData portData);
+Index: src/com/android/mms/ui/MessageUtils.java
+===================================================================
+--- src/com/android/mms/ui/MessageUtils.java	(revision 4926)
++++ src/com/android/mms/ui/MessageUtils.java	(revision 4927)
+@@ -184,81 +184,107 @@
+     private static final LruCache<String,CmccCard> mCmccDataCache = new LruCache<String,CmccCard>(CMCC_CARD_CACHE_SIZE);
+     private static final LruCache<String,String> mJisonCache = new LruCache<String,String>(CMCC_CARD_CACHE_SIZE);
+     private static final LruCache<String,SmsPortData> mSmsPortDateCache = new LruCache<String,SmsPortData>(CMCC_CARD_CACHE_SIZE);
+-
++    public static final int maxMemory = (int) (Runtime.getRuntime().maxMemory() / 1024);
++    // Use 1/16th of the available memory for this memory cache.
++    public static final int cacheSize = maxMemory / 16;
++    private static final LruCache<String, Bitmap> mLogoIconCache = new LruCache<String, Bitmap>(cacheSize) {
++        @Override
++        protected int sizeOf(String key, Bitmap bitmap) {
++            // The cache size will be measured in kilobytes rather than number of items.
++            return bitmap.getByteCount()/1024;
++        }
++    };
+     private static final String TAG = LogTag.TAG;
+ 
+     private static String sLocalNumber;
+ 
+     private static String[] sNoSubjectStrings;
+-        public static class CmccCard {
+-            public int mWifiState;
+-            public int mCardType;
+-            public CardView mCardView;
+-            public CmccCard(int wifiState, CardView cardView) {
+-                    mWifiState = wifiState;
+-                    mCardView = cardView;
++    public static class CmccCard {
++        public int mWifiState;
++        public int mCardType;
++        public CardView mCardView;
++        public CmccCard(int wifiState, CardView cardView) {
++                mWifiState = wifiState;
++                mCardView = cardView;
++        }
++    }
++
++    /**
++    * save bitmap to cache
++    */
++    public static void addCardToMemoryCache(String key, CmccCard card) {
++    if (mCmccDataCache != null) {
++            synchronized (mCmccDataCache){
++                    if(getCardFromMemCache(key) != null) {
++                            mCmccDataCache.remove(key);
++                    }
++            mCmccDataCache.put(key, card);
+             }
++    }
++    }
++    /**
++    * get bitmap from cache
++    */
++    public static CmccCard getCardFromMemCache(String key) {
++            if (mCmccDataCache != null) {
++                    return mCmccDataCache.get(key);
++            }
++            return null;
++    }
++    /**
++    * save JISON to cache
++    */
++    public static void addSmsPortDataToMemoryCache(String key, SmsPortData Portdata) {
++        if (mSmsPortDateCache != null) {
++            synchronized (mSmsPortDateCache) {
++                mSmsPortDateCache.put(key, Portdata);
++            }
+         }
++    }
+ 
+-        /**
+-        * save bitmap to cache
+-        */
+-        public static void addCardToMemoryCache(String key, CmccCard card) {
+-        if (mCmccDataCache != null) {
+-                synchronized (mCmccDataCache){
+-                        if(getCardFromMemCache(key) != null) {
+-                                mCmccDataCache.remove(key);
+-                        }
+-                mCmccDataCache.put(key, card);
++    /**
++    * save JISON to cache
++    */
++    public static void addJisonToMemoryCache(String key, String jison) {
++        if (mJisonCache != null) {
++                synchronized (mJisonCache){
++                        mJisonCache.put(key, jison);
+                 }
+         }
+-        }
+-        /**
+-        * get bitmap from cache
+-        */
+-        public static CmccCard getCardFromMemCache(String key) {
+-                if (mCmccDataCache != null) {
+-                        return mCmccDataCache.get(key);
+-                }
+-                return null;
+-        }
+-        /**
+-        * save JISON to cache
+-        */
+-        public static void addSmsPortDataToMemoryCache(String key, SmsPortData Portdata) {
+-            if (mSmsPortDateCache != null) {
+-                synchronized (mSmsPortDateCache) {
+-                    mSmsPortDateCache.put(key, Portdata);
+-                }
+-            }
+-        }
++    }
+ 
+-        /**
+-        * save JISON to cache
+-        */
+-        public static void addJisonToMemoryCache(String key, String jison) {
+-            if (mJisonCache != null) {
+-                    synchronized (mJisonCache){
+-                            mJisonCache.put(key, jison);
+-                    }
+-            }
++
++    /**
++    * get SmsPortData from cache
++    */
++    public static SmsPortData getSmsPortDataFromMemCache(String key) {
++        Log.d(TAG, "zly --> getSmsPortDataFromMemCache--->key="+key+"----->mSmsPortDateCache="+mSmsPortDateCache);
++        if (mSmsPortDateCache != null) {
++            return mSmsPortDateCache.get(key);
+         }
++        return null;
++    }
+ 
+ 
+-        /**
+-        * get SmsPortData from cache
+-        */
+-        public static SmsPortData getSmsPortDataFromMemCache(String key) {
+-            Log.d("yunlong",TAG+"--getSmsPortDataFromMemCache--->key="+key+"----->mSmsPortDateCache="+mSmsPortDateCache);
+-            if (mSmsPortDateCache != null) {
+-                return mSmsPortDateCache.get(key);
++    public static void addBitmapToMemoryCache(String key, Bitmap bitmap) {
++        if (mLogoIconCache != null && getBitmapFromMemCache(key) == null) {
++            synchronized (mLogoIconCache){
++                mLogoIconCache.put(key, bitmap);
+             }
+-            return null;
+         }
++    }
+ 
++    /**
++    * get bitmap from cache
++    */
++    public static Bitmap getBitmapFromMemCache(String key) {
++        if (mLogoIconCache != null) {
++            return mLogoIconCache.get(key);
++        }
++        return null;
++    }
+ 
+-
+-        /**
++     /**
+      * cache for CMCC-cache
+      */
+     public static void clearCmccCache(){
+Index: src/com/android/mms/ui/ConversationList.java
+===================================================================
+--- src/com/android/mms/ui/ConversationList.java	(revision 4926)
++++ src/com/android/mms/ui/ConversationList.java	(revision 4927)
+@@ -280,9 +280,9 @@
+     private boolean isUserHasPerUsingMms = true;
+ 
+     public static final int HAVE_STICKTOPED_CONVERSATIONS_TOKEN  = 1804;
+-    private LruCache<String, Bitmap> mLogoIconCache;
+ 
+ 
++
+     @Override
+     protected void onCreate(Bundle savedInstanceState) {
+         super.onCreate(savedInstanceState);
+@@ -370,19 +370,6 @@
+ 
+ 
+         Log.e(TAG, "getCertificateSHA1Fingerprint -->" + getCertificateSHA1Fingerprint(this));
+-        if(MmsConfig.isCmccFeature()) {
+-            final int maxMemory = (int) (Runtime.getRuntime().maxMemory() / 1024);
+-            // Use 1/16th of the available memory for this memory cache.
+-            final int cacheSize = maxMemory / 16;
+-
+-            mLogoIconCache = new LruCache<String, Bitmap>(cacheSize) {
+-                    @Override
+-                    protected int sizeOf(String key, Bitmap bitmap) {
+-                        // The cache size will be measured in kilobytes rather than number of items.
+-                        return bitmap.getByteCount() / 1024;
+-                    }
+-                    };
+-        }
+     }
+ 
+     private void setupActionBar() {
+@@ -948,28 +935,6 @@
+     }
+ 
+ 
+-    /**IUV:add-start for CMCC-cardview by yunlong.shen on 2017/11/07 */
+-    /**
+-    * save bitmap to cache
+-    */
+-    public void addBitmapToMemoryCache(String key, Bitmap bitmap) {
+-        if (mLogoIconCache != null && getBitmapFromMemCache(key) == null) {
+-            synchronized (mLogoIconCache){
+-                mLogoIconCache.put(key, bitmap);
+-            }
+-        }
+-    }
+-
+-    /**
+-    * get bitmap from cache
+-    */
+-    public Bitmap getBitmapFromMemCache(String key) {
+-        if (mLogoIconCache != null) {
+-                return mLogoIconCache.get(key);
+-        }
+-        return null;
+-    }
+-
+     protected static String getCertificateSHA1Fingerprint(Context context) {
+             String value = null;
+ 
