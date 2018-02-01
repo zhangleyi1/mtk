@@ -1,0 +1,25 @@
+Index: AndroidManifest.xml
+===================================================================
+--- AndroidManifest.xml	(revision 4254)
++++ AndroidManifest.xml	(revision 4255)
+@@ -100,7 +100,7 @@
+ 
+         <meta-data
+             android:name="cn.cmcc.online.smsapi.API_KEY"
+-            android:value="20041980fc7b4164acc1f11cfecb209b" />
++            android:value="b72f4ed38ab04fa285646437880b327a" />
+             <service android:name="cn.cmcc.online.smsapi.CacheService"/>
+             <service android:name="cn.cmcc.online.smsapi.DaService"/>
+ 
+Index: src/com/android/mms/ui/MessageListAdapter.java
+===================================================================
+--- src/com/android/mms/ui/MessageListAdapter.java	(revision 4254)
++++ src/com/android/mms/ui/MessageListAdapter.java	(revision 4255)
+@@ -309,6 +309,7 @@
+                     /// M: google JB.MR1 patch, group mms
+                     mli.bind(msgItem, mIsGroupConversation, position, mIsDeleteMode);
+                     mli.setMsgListItemHandler(mMsgListItemHandler);
++                    mli.getCardInfo();
+                     mli.setMessageListItemAdapter(this);
+                 } else {
+                     MessageListItem mli = (MessageListItem) view;
