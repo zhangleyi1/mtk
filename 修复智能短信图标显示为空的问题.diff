@@ -1,0 +1,13 @@
+Index: src/com/android/mms/ConversionListInfoManager.java
+===================================================================
+--- src/com/android/mms/ConversionListInfoManager.java	(revision 4856)
++++ src/com/android/mms/ConversionListInfoManager.java	(revision 4857)
+@@ -122,7 +122,7 @@
+                         return;
+                 }
+                 if(!MessageUtils.isWifiNetwork(mCtx)) {
+-                        imageView.setVisibility(View.GONE);
++                        //imageView.setVisibility(View.GONE);
+                         return ;
+                 }
+                 if (cancelPotentialWork(imgUrl, imageView)) {
